@@ -1,10 +1,13 @@
 ﻿namespace SLTPrivateMusicBot.Player
 {
     using System;
+    using System.Threading;
     using System.Windows;
 
     public class AudioPlayer
     {
+        private static EventWaitHandle _nextStopWait = new EventWaitHandle(false, EventResetMode.AutoReset);
+
         public static AudioPlayer Instance { get; } = new AudioPlayer();
 
         #region References
@@ -16,6 +19,7 @@
         public bool IsPlaying { get; set; }
         public bool Shuffle { get; set; }
         public bool WaitingForNext { get; set; }
+        public bool StreamingEnabled { get; set; }
         public LoopMode LoopMode { get; set; }
         public float Volume { get; set; } = 1;
         #endregion
@@ -83,7 +87,10 @@
                 if (nIndex != -1)
                 {
                     this.WaitingForNext = true;
-                    MainWindow.Bot.StopAudio();
+                    Application.Current.Dispatcher.Invoke(() => MainWindow.Current.DisablePlay());
+                    MainWindow.Bot.StopAudio(() => _nextStopWait.Set());
+                    _nextStopWait.WaitOne();
+                    Application.Current.Dispatcher.Invoke(() => MainWindow.Current.EnablePlay());
                     this.Play(nIndex);
                 }
                 else

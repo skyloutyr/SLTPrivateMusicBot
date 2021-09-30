@@ -84,6 +84,16 @@
             }
         }
 
+        public void DisablePlay()
+        {
+            this.Btn_Play.IsEnabled = false;
+        }
+
+        public void EnablePlay()
+        {
+            this.Btn_Play.IsEnabled = true;
+        }
+
         // Connect clicked
         private void Button_Click(object sender, RoutedEventArgs e)
         {
@@ -217,7 +227,7 @@
                         {
                             if (new[] { ".mp3", ".wav", ".ogg", ".mp4" }.Contains(Path.GetExtension(s)))
                             {
-                                AudioPlayer.Add(new AudioInfo(s));
+                                AudioPlayer.Add(new AudioInfo(s, AudioPlayer.Instance.StreamingEnabled));
                             }
                         }
 
@@ -241,7 +251,7 @@
                             try
                             {
                                 string fPath = YoutubeDL.DownloadVideo(dataURI);
-                                AudioPlayer.Add(new AudioInfo(fPath));
+                                AudioPlayer.Add(new AudioInfo(fPath, AudioPlayer.Instance.StreamingEnabled));
                             }
                             catch
                             {
@@ -397,6 +407,12 @@
         private void Slider_Volume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             AudioPlayer.Instance.Volume = (float)Math.Clamp(this.Slider_Volume.Value / 100, 0, 1);
+        }
+
+        // Streaming enabled/disabled
+        private void ToggleSwitch_Toggled(object sender, RoutedEventArgs e)
+        {
+            AudioPlayer.Instance.StreamingEnabled = this.TS_Streaming.IsOn;
         }
     }
 }

@@ -69,7 +69,10 @@
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     MainWindow mw = (MainWindow)Application.Current.MainWindow;
-                    mw.ClientDisconnectedCallback();
+                    if (mw != null)
+                    {
+                        mw.ClientDisconnectedCallback();
+                    }
                 });
             }
 
@@ -181,11 +184,17 @@
             }
         }
 
-        public void StopAudio()
+        private Action _stopCallback;
+        public void StopAudio(Action callback = null)
         {
             if (this._currentAI != null)
             {
                 this._currentAI.IsBeingCleanedUp = true;
+                this._stopCallback = callback;
+            }
+            else
+            {
+                callback?.Invoke();
             }
         }
 
@@ -236,7 +245,7 @@
                             {
                                 d.Write(this._buffer, 0, l);
                             }
-                            catch (IOException ex)
+                            catch (Exception ex)
                             {
                                 // stream must be closed.
                                 if (this._currentAudioClient == null || this._currentAudioClient.ConnectionState != ConnectionState.Connected)
@@ -289,7 +298,11 @@
                         {
                             d.Flush();
                         }
-
+                        else
+                        {
+                            this._stopCallback?.Invoke();
+                        }
+                        
                         info.Clear();
                         Application.Current.Dispatcher.Invoke(() => 
                         { 

@@ -23,6 +23,7 @@
         </Grid.ColumnDefinitions>
         <Border x:Name="B_Indicator" HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="48" Height="48" Margin="10,0,0,10" BorderThickness="2" BorderBrush="Black" Background="Red" ToolTip="No Connection" />
         <Button x:Name="Btn_Connect" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,10" Height="48" Width="127" Content="Connect" Click="Button_Click" />
+        <mah:ToggleSwitch x:Name="TS_Streaming" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Audio Streaming" Toggled="ToggleSwitch_Toggled" />
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="10*" />
