@@ -23,17 +23,33 @@
         </Grid.ColumnDefinitions>
         <Border x:Name="B_Indicator" HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="48" Height="48" Margin="10,0,0,10" BorderThickness="2" BorderBrush="Black" Background="Red" ToolTip="No Connection" />
         <Button x:Name="Btn_Connect" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,10" Height="48" Width="127" Content="Connect" Click="Button_Click" />
-        <mah:ToggleSwitch x:Name="TS_Streaming" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Audio Streaming" Toggled="ToggleSwitch_Toggled" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" VerticalAlignment="Top" Height="32">
+            <Button x:Name="Btn_AddFile" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="2 2 2 2" Click="Btn_AddFile_Click">
+                <Path Fill="Gray" Data="M18 14 L18 2 L14 2 L14 14 L2 14 L2 18 L14 18 L14 30 L18 30 L18 18 L30 18 L30 14 Z M34 32 L34 22 L28 22 L26 20 L20 20 L20 32 Z" Height="14" Stretch="Fill" Width="14" />
+            </Button>
+            <Button x:Name="Btn_AddUrl" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="2 2 2 2" Click="Btn_AddUrl_Click">
+                <Path Fill="Gray" Data="M18 14 L18 2 L14 2 L14 14 L2 14 L2 18 L14 18 L14 30 L18 30 L18 18 L30 18 L30 14 Z M34 30 L34 22 L32 20 L22 20 L20 22 L20 30 L22 32 L32 32 L26 28 L26 24 L30 26 L26 28 L32 32 Z" Height="14" Stretch="Fill" Width="14" />
+            </Button>
+            <CheckBox x:Name="CB_IgnoreConnections" Content="Ignore connection" />
+        </StackPanel>
+        <mah:ToggleSwitch x:Name="TS_Streaming" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Audio Streaming" Toggled="ToggleSwitch_Toggled" Margin="0,37,0,0" />
+        <mah:ToggleSwitch x:Name="TS_YTDirect" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Direct Youtube Streaming" Toggled="ToggleSwitch_Toggled" Margin="0,97,0,0" />
+        <ScrollViewer Margin="0,157,0,63">
+            <RichTextBox x:Name="TB_Log" IsReadOnly="True" Block.LineHeight="1" />
+        </ScrollViewer>
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="10*" />
                 <RowDefinition Height="1*" />
             </Grid.RowDefinitions>
             <Button x:Name="Btn_Play" Grid.Row="1" HorizontalAlignment="Left" Width="32" Height="32" Margin="6,3,0,4" Click="Btn_Play_Click">
-                <Path Fill="Gray" Data="M2 16 L16 8 L2 0 Z" />
+                <Grid>
+                    <Path x:Name="Path_Play" Visibility="Visible" Fill="Gray" Data="M2 16 L16 8 L2 0 Z" />
+                    <Path x:Name="Path_Pause" Visibility="Hidden" Fill="Gray" Data="M2 16 L2 0 L6 0 L6 16 Z M10 16 L10 0 L14 0 L14 16 Z" />
+                </Grid>
             </Button>
 
-            <Button x:Name="Btn_Prev" Grid.Row="1" HorizontalAlignment="Left" Width="32" Height="32" Margin="43,3,0,4">
+            <Button x:Name="Btn_Prev" Grid.Row="1" HorizontalAlignment="Left" Width="32" Height="32" Margin="43,3,0,4" Click="Btn_Prev_Click">
                 <Path Fill="Gray" Data="M0 16 L2 16 L2 0 L0 0 Z M8 16 L2 8 L8 0 Z M14 16 L8 8 L14 0 Z" />
             </Button>
 
@@ -52,7 +68,7 @@
                 </Grid>
             </Button>
 
-            <Button x:Name="Btn_Shuffle" Grid.Row="1" HorizontalAlignment="Left" Width="32" Height="32" Margin="191,3,0,4">
+            <Button x:Name="Btn_Shuffle" Grid.Row="1" HorizontalAlignment="Left" Width="32" Height="32" Margin="191,3,0,4" Click="Btn_Shuffle_Click">
                 <Path Fill="Gray" Data="M2 16 L0 14 L12 2 L10 0 L16 0 L16 6 L14 4 Z M4 6 L6 4 L2 0 L0 2 Z M9.5 11 L11 9.5 L14 12 L16 10 L16 16 L10 16 L12 14 Z" />
             </Button>
 
@@ -60,12 +76,12 @@
             <Slider x:Name="Slider_Volume" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" Width="100" Value="100" Maximum="100" Minimum="0" ValueChanged="Slider_Volume_ValueChanged" />
             <Grid HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Height="32">
                 <Label x:Name="Label_Current" Content="00:00" VerticalAlignment="Center" HorizontalAlignment="Left" />
-                <ProgressBar x:Name="ProgressBar_Progress" Height="12" Margin="40 0 40 0" Value="0" />
+                <Slider x:Name="ProgressBar_Progress" Height="12" Margin="40 0 40 0" Value="0" ValueChanged="ProgressBar_Progress_ValueChanged" />
                 <Label x:Name="Label_Duration" Content="00:00" VerticalAlignment="Center" HorizontalAlignment="Right" />
             </Grid>
             <mah:ProgressRing x:Name="ProgressRing_Wait" Foreground="RoyalBlue" IsActive="True" Visibility="Hidden" />
             <Line x:Name="Line_DropPreview" Visibility="Hidden" HorizontalAlignment="Stretch" VerticalAlignment="Top" Height="1" StrokeThickness="2" Stroke="RoyalBlue" Panel.ZIndex="1" X2="10000" Y1="0" Y2="0" StrokeDashArray="2 2" />
-            <ListView x:Name="ListView_Playlist" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Visible" Margin="0 0 0 32" AllowDrop="true" DragLeave="ListView_Playlist_DragLeave" DragOver="ListView_Playlist_DragOver" PreviewMouseLeftButtonDown="ListView_Playlist_PreviewMouseLeftButtonDown" MouseLeftButtonUp="ListView_Playlist_MouseLeftButtonUp" MouseMove="ListView_Playlist_MouseMove" SelectionMode="Extended" DragEnter="ListView_Playlist_DragEnter" Drop="ListView_Playlist_Drop" ItemsSource="{Binding Playlist, Mode=OneWay, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:MainWindow}}}">
+            <ListView x:Name="ListView_Playlist" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Visible" Margin="0 0 0 32" AllowDrop="true" DragLeave="ListView_Playlist_DragLeave" DragOver="ListView_Playlist_DragOver" PreviewMouseLeftButtonDown="ListView_Playlist_PreviewMouseLeftButtonDown" MouseLeftButtonUp="ListView_Playlist_MouseLeftButtonUp" MouseMove="ListView_Playlist_MouseMove" SelectionMode="Extended" DragEnter="ListView_Playlist_DragEnter" Drop="ListView_Playlist_Drop" MouseDoubleClick="ListView_Playlist_MouseDoubleClick" ItemsSource="{Binding Playlist, Mode=OneWay, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:MainWindow}}}">
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <Grid>

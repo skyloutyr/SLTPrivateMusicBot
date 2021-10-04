@@ -1,6 +1,7 @@
 ﻿namespace SLTPrivateMusicBot
 {
     using MahApps.Metro.Controls;
+    using Microsoft.Win32;
     using SLTPrivateMusicBot.Player;
     using System;
     using System.Collections.Generic;
@@ -8,6 +9,7 @@
     using System.Globalization;
     using System.IO;
     using System.Linq;
+    using System.Runtime.InteropServices;
     using System.Threading;
     using System.Windows;
     using System.Windows.Controls;
@@ -20,15 +22,21 @@
     /// </summary>
     public partial class MainWindow : MetroWindow
     {
+        public static int MusicRate = 48000 * 2 * 2;
+
         public static MainWindow Current => (MainWindow)Application.Current.MainWindow;
 
         public static BotCore? Bot { get; set; }
         public static ObservableCollection<AudioInfo> Playlist { get; } = new ObservableCollection<AudioInfo>();
 
+        public bool IgnoreSliderValueChange { get; set; }
+
         public MainWindow()
         {
+            App.Log("[INFO] Application starting");
             InitializeComponent();
             this.Closed += this.HandleClose;
+            App.Log("[INFO] Application started");
         }
 
         private void HandleClose(object? sender, System.EventArgs e)
@@ -46,6 +54,7 @@
         {
             this.B_Indicator.Background = new SolidColorBrush(Colors.Green);
             this.B_Indicator.ToolTip = "Everything is setup correctly and ready to work.";
+            App.Log("[FINE] Joined voice");
         }
 
         public void ClientDisconnectedCallback()
@@ -53,6 +62,9 @@
             this.B_Indicator.Background = new SolidColorBrush(Colors.Red);
             this.B_Indicator.ToolTip = "No Connection.";
             this.Btn_Connect.IsEnabled = true;
+            this.StopCallback();
+            AudioPlayer.Instance.IsPlaying = false;
+            App.Log("[FINE] Left voice");
         }
 
         public void ClientConnectedCallback()
@@ -60,11 +72,21 @@
             this.B_Indicator.Background = new SolidColorBrush(Colors.Yellow);
             this.B_Indicator.ToolTip = "Connected, but not in a voice channel. Join by @ at the bot.";
             this.Btn_Connect.IsEnabled = true;
+            this.StopCallback();
+            App.Log("[FINE] Joined guild");
         }
 
         public void PlayCallback()
         {
             this.Btn_Play.Background = new SolidColorBrush(Colors.LightCyan);
+            this.Path_Play.Visibility = Visibility.Hidden;
+            this.Path_Pause.Visibility = Visibility.Visible;
+        }
+
+        public void PauseCallback()
+        {
+            this.Path_Pause.Visibility = Visibility.Hidden;
+            this.Path_Play.Visibility = Visibility.Visible;
         }
 
         public void StopCallback()
@@ -72,6 +94,8 @@
             this.Btn_Play.Background = new SolidColorBrush(Colors.White);
             this.ProgressBar_Progress.Value = 0;
             this.Label_Current.Content = this.Label_Duration.Content = "00:00";
+            this.Path_Play.Visibility = Visibility.Visible;
+            this.Path_Pause.Visibility = Visibility.Hidden;
         }
 
         public void UpdatePlayingPath()
@@ -217,6 +241,7 @@
                     string[] data = (string[])e.Data.GetData("FileDrop");
                     if (data.Length > 0)
                     {
+                        App.Log("[FINE] Freezing app.");
                         this.ListView_Playlist.Visibility = Visibility.Hidden;
                         this.ProgressRing_Wait.Visibility = Visibility.Visible;
                     }
@@ -227,11 +252,13 @@
                         {
                             if (new[] { ".mp3", ".wav", ".ogg", ".mp4" }.Contains(Path.GetExtension(s)))
                             {
-                                AudioPlayer.Add(new AudioInfo(s, AudioPlayer.Instance.StreamingEnabled));
+                                App.Log("[FINE] Starting to add file " + s + ".");
+                                AudioPlayer.Instance.Add(new AudioInfo(s, AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
                             }
                         }
 
                         Application.Current.Dispatcher.Invoke(() => {
+                            App.Log("[FINE] Thawing app.");
                             Current.ListView_Playlist.Visibility = Visibility.Visible;
                             Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
                         });
@@ -248,24 +275,37 @@
                         new Thread(() =>
                         {
                             bool err = false;
-                            try
+                            if (AudioPlayer.Instance.YTDirectEnabled)
                             {
-                                string fPath = YoutubeDL.DownloadVideo(dataURI);
-                                AudioPlayer.Add(new AudioInfo(fPath, AudioPlayer.Instance.StreamingEnabled));
-                            }
-                            catch
-                            {
-                                err = true;
-                            }
-
-                            Application.Current.Dispatcher.Invoke(() => {
-                                Current.ListView_Playlist.Visibility = Visibility.Visible;
-                                Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
-                                if (err)
+                                AudioPlayer.Instance.Add(new AudioInfo(dataURI.ToString(), AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
+                                Application.Current.Dispatcher.Invoke(() =>
                                 {
-                                    MessageBox.Show("Either the provided link wasn't a youtube video url or there was a filesystem error", "Couldn't download video!", MessageBoxButton.OK, MessageBoxImage.Error);
+                                    Current.ListView_Playlist.Visibility = Visibility.Visible;
+                                    Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                                });
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    string fPath = YoutubeDL.DownloadVideo(dataURI);
+                                    AudioPlayer.Instance.Add(new AudioInfo(fPath, AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
                                 }
-                            });
+                                catch
+                                {
+                                    err = true;
+                                }
+
+                                Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    Current.ListView_Playlist.Visibility = Visibility.Visible;
+                                    Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                                    if (err)
+                                    {
+                                        MessageBox.Show("Either the provided link wasn't a youtube video url or there was a filesystem error", "Couldn't download video!", MessageBoxButton.OK, MessageBoxImage.Error);
+                                    }
+                                });
+                            }
                         }).Start();
                     }
                 }
@@ -297,6 +337,7 @@
             }
         }
 
+        private long _lastClickTime;
         private void ListView_Playlist_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             this.Line_DropPreview.Visibility = Visibility.Hidden;
@@ -311,8 +352,15 @@
                     this.ListView_Playlist.SelectedIndex = Playlist.IndexOf((AudioInfo)item.DataContext);
                     this.ListView_Playlist.UpdateLayout();
                     this._contextItem = null;
+                    long deltaTime = DateTimeOffset.Now.ToUnixTimeMilliseconds() - this._lastClickTime;
+                    if (deltaTime <= User32Wrapper.GetDoubleClickTime())
+                    {
+                        this.ListView_Playlist_MouseDoubleClick(item, e);
+                    }
                 }
             }
+
+            this._lastClickTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
         }
 
         public static T? GetObjectUnderPoint<T>(Visual reference, Point p) where T : DependencyObject
@@ -328,7 +376,27 @@
 
         private void Btn_Play_Click(object sender, RoutedEventArgs e)
         {
-            AudioPlayer.Instance.Play(0);
+            if (!(this.CB_IgnoreConnections.IsChecked ?? false) && (Bot == null || !Bot.Connected))
+            {
+                return;
+            }
+
+            if (!AudioPlayer.Instance.IsPlaying)
+            {
+                AudioPlayer.Instance.Play(0);
+            }
+            else
+            {
+                AudioPlayer.Instance.Paused = !AudioPlayer.Instance.Paused;
+                if (AudioPlayer.Instance.Paused)
+                {
+                    this.PauseCallback();
+                }
+                else
+                {
+                    this.PlayCallback();
+                }
+            }
         }
 
         private void Btn_Repeat_Click(object sender, RoutedEventArgs e)
@@ -363,6 +431,11 @@
 
         private void Btn_Stop_Click(object sender, RoutedEventArgs e)
         {
+            if (!(this.CB_IgnoreConnections.IsChecked ?? false) && (Bot == null || !Bot.Connected))
+            {
+                return;
+            }
+
             AudioPlayer.Instance.Stop();
         }
 
@@ -401,6 +474,11 @@
 
         private void Btn_Next_Click(object sender, RoutedEventArgs e)
         {
+            if (!(this.CB_IgnoreConnections.IsChecked ?? false) && (Bot == null || !Bot.Connected))
+            {
+                return;
+            }
+
             AudioPlayer.Instance.Next();
         }
 
@@ -412,7 +490,147 @@
         // Streaming enabled/disabled
         private void ToggleSwitch_Toggled(object sender, RoutedEventArgs e)
         {
-            AudioPlayer.Instance.StreamingEnabled = this.TS_Streaming.IsOn;
+            if (sender == this.TS_YTDirect)
+            {
+                if (!this.TS_Streaming.IsOn && this.TS_YTDirect.IsOn)
+                {
+                    this.TS_Streaming.IsOn = true;
+                }
+
+                AudioPlayer.Instance.YTDirectEnabled = this.TS_Streaming.IsOn;
+            }
+            else
+            {
+                if (this.TS_YTDirect.IsOn && !this.TS_Streaming.IsOn)
+                {
+                    this.TS_YTDirect.IsOn = false;
+                }
+
+                AudioPlayer.Instance.StreamingEnabled = this.TS_Streaming.IsOn;
+            }
+        }
+
+        private void ListView_Playlist_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (!(this.CB_IgnoreConnections.IsChecked ?? false) && (Bot == null || !Bot.Connected))
+            {
+                return;
+            }
+
+            if (sender is ListViewItem lvi && lvi.DataContext is AudioInfo ai)
+            {
+                AudioPlayer.Instance.Switch(Playlist.IndexOf(ai));
+            }
+        }
+
+        private void Btn_AddFile_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog ofd = new OpenFileDialog() { Multiselect = true };
+            if (ofd.ShowDialog() ?? false)
+            {
+                string[] data = ofd.FileNames;
+                if (data.Length > 0)
+                {
+                    this.ListView_Playlist.Visibility = Visibility.Hidden;
+                    this.ProgressRing_Wait.Visibility = Visibility.Visible;
+                }
+
+                new Thread(() =>
+                {
+                    foreach (string s in data)
+                    {
+                        if (new[] { ".mp3", ".wav", ".ogg", ".mp4" }.Contains(Path.GetExtension(s)))
+                        {
+                            AudioPlayer.Instance.Add(new AudioInfo(s, AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
+                        }
+                    }
+
+                    Application.Current.Dispatcher.Invoke(() => {
+                        Current.ListView_Playlist.Visibility = Visibility.Visible;
+                        Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                    });
+
+                }).Start();
+            }
+        }
+
+        private void Btn_AddUrl_Click(object sender, RoutedEventArgs e)
+        {
+            InputTextDialog itd = new InputTextDialog();
+            if (itd.ShowDialog() ?? false)
+            {
+                string txt = itd.URL;
+                Uri dataURI = new Uri(txt);
+                this.ListView_Playlist.Visibility = Visibility.Hidden;
+                this.ProgressRing_Wait.Visibility = Visibility.Visible;
+                new Thread(() =>
+                {
+                    bool err = false;
+                    if (AudioPlayer.Instance.YTDirectEnabled)
+                    {
+                        AudioPlayer.Instance.Add(new AudioInfo(dataURI.ToString(), AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            Current.ListView_Playlist.Visibility = Visibility.Visible;
+                            Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                        });
+                    }
+                    else
+                    {
+                        try
+                        {
+                            string fPath = YoutubeDL.DownloadVideo(dataURI);
+                            AudioPlayer.Instance.Add(new AudioInfo(fPath, AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
+                        }
+                        catch
+                        {
+                            err = true;
+                        }
+
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            Current.ListView_Playlist.Visibility = Visibility.Visible;
+                            Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                            if (err)
+                            {
+                                MessageBox.Show("Either the provided link wasn't a youtube video url or there was a filesystem error", "Couldn't download video!", MessageBoxButton.OK, MessageBoxImage.Error);
+                            }
+                        });
+                    }
+                }).Start();
+            }
+        }
+
+        private void ProgressBar_Progress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!this.IgnoreSliderValueChange && Bot != null && AudioPlayer.Instance.IsPlaying && AudioPlayer.Instance.CurrentAudio != null && !AudioPlayer.Instance.CurrentAudio.IsYTDirect)
+            {
+                Bot.SeekPosition((int)e.NewValue);
+            }
+        }
+
+        private void Btn_Prev_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(this.CB_IgnoreConnections.IsChecked ?? false) && (Bot == null || !Bot.Connected))
+            {
+                return;
+            }
+
+            AudioPlayer.Instance.Previous();
+        }
+
+        private void Btn_Shuffle_Click(object sender, RoutedEventArgs e)
+        {
+            if (!AudioPlayer.Instance.Shuffle)
+            {
+                this.Btn_Shuffle.Background = new SolidColorBrush(Colors.LightCyan);
+            }
+            else
+            {
+                this.Btn_Shuffle.Background = new SolidColorBrush(Colors.White);
+            }
+
+            AudioPlayer.Instance.Shuffle = !AudioPlayer.Instance.Shuffle;
         }
     }
 }

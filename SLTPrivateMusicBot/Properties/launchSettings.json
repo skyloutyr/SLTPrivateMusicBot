@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SLTPrivateMusicBot": {
+      "commandName": "Project",
+      "commandLineArgs": "-ar 48000"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+﻿<mah:MetroWindow x:Class="SLTPrivateMusicBot.InputTextDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SLTPrivateMusicBot"
+        xmlns:mah="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
+        mc:Ignorable="d"
+        Title="InputTextDialog" Height="96" Width="329">
+    <Grid>
+        <TextBox x:Name="TB_Url" VerticalAlignment="Top" Margin="10,10,10,0" TextChanged="TB_Url_TextChanged" />
+        <Button x:Name="Btn_Cancel" HorizontalAlignment="Left" VerticalAlignment="Bottom" Content="Cancel" Margin="10,0,0,10" Click="Btn_Cancel_Click" />
+        <Button x:Name="Btn_Ok" HorizontalAlignment="Right" VerticalAlignment="Bottom" Content="Accept" Margin="0,0,10,10" Click="Btn_Ok_Click" />
+    </Grid>
+</mah:MetroWindow>

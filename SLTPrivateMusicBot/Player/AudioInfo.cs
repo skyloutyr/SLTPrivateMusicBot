@@ -1,6 +1,7 @@
 ﻿namespace SLTPrivateMusicBot.Player
 {
     using System;
+    using System.Globalization;
     using System.IO;
 
     public class AudioInfo
@@ -21,36 +22,113 @@
         {
             get
             {
-                string s = string.IsNullOrEmpty(this.Metadata.format.tags.title) ? Path.GetFileNameWithoutExtension(this.FilePath) : this.Metadata.format.tags.title;
+                string s = this.FullNameProperty;
                 return s.Length < 64 ? s : string.Concat(s.AsSpan(0, 61), "...");
             }
         }
 
-        public string FullNameProperty => string.IsNullOrEmpty(this.Metadata.format.tags.title) ? Path.GetFileNameWithoutExtension(this.FilePath) : this.Metadata.format.tags.title;
+        public string FullNameProperty => !string.IsNullOrEmpty(this._overrideTitle) ? this._overrideTitle : string.IsNullOrEmpty(this.Metadata.format.tags.title) ? Path.GetFileNameWithoutExtension(this.FilePath) : this.Metadata.format.tags.title;
 
         public Func<byte[]> AudioGetter { get; set; }
-        private byte[] _audioBuffer;
+        public bool IsYTDirect => this._isYoutubeStream;
 
-        public AudioInfo(string fPath, bool streaming = false)
+        private byte[] _audioBuffer;
+        private readonly string _originalURL;
+        private readonly bool _isYoutubeStream;
+        private long _expireDate;
+        private string _overrideTitle;
+
+        public AudioInfo(string fPath, bool streaming = false, bool ytDirect = false)
         {
-            if (File.Exists(fPath)) // Have a file
+            if (ytDirect && fPath.StartsWith("https://"))
             {
-                this.FilePath = fPath;
-                this.Metadata = FFMpeg.GetAudioMetadata(fPath);
-                this.Length = (uint)Math.Ceiling(double.Parse(this.Metadata.format.duration) * 1000);
-                this.IsStreaming = streaming;
-                if (streaming)
+                if (!streaming)
                 {
-                    this.StreamBackend = FFMpeg.StreamAudio(fPath, 48000);
+                    App.Log("[FATAL] To use YTDirect Audio streaming must also be enabled!");
+                    throw new ArgumentException("To use YTDirect Audio streaming must also be enabled!");
                 }
-                else
+
+                this._originalURL = fPath;
+                this._isYoutubeStream = true;
+                this.IsStreaming = true;
+                this.FilePath = Uri.UnescapeDataString(YoutubeDL.GetVideoStreamUrl(new Uri(fPath))).Replace("\n", "");
+                if (string.IsNullOrEmpty(this.FilePath))
                 {
-                    this.AudioGetter = () => FFMpeg.GetAudio(fPath, 48000);
+                    App.Log("[FATAL] Couldn't get audio data from a given URL!");
+                    throw new ArgumentException("Audio data could not be obtained from the URL");
                 }
+
+                App.Log("[FINE] Parsing audio file metadata");
+                this.Metadata = FFMpeg.GetAudioMetadata(this.FilePath);
+                this._overrideTitle = YoutubeDL.GetVideoTitle(new Uri(fPath)).Replace("\n", "");
+                App.Log("[FINE] Have audio metadata");
+                this._expireDate = YoutubeDL.GetExpirationDate(this.FilePath);
+                double d = 0;
+                try 
+                { 
+                    try
+                    {
+                        d = double.Parse(this.Metadata.format.duration, CultureInfo.CurrentCulture);
+                    }
+                    catch (FormatException fe)
+                    {
+                        d = double.Parse(this.Metadata.format.duration, CultureInfo.InvariantCulture);
+                    }
+
+                    this.Length = (uint)Math.Ceiling(d * 1000);
+                } 
+                catch (Exception e)
+                {
+                    App.Log("[ERROR] Audio metadata malformed!", e);
+                }
+
+                this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000);
+                App.Log("[FINE] AudioInfo created!");
             }
             else
             {
-                throw new ArgumentException("A file at a given path does not exist!");
+                if (File.Exists(fPath)) // Have a file
+                {
+                    this.FilePath = fPath;
+                    App.Log("[FINE] Parsing audio file metadata");
+                    this.Metadata = FFMpeg.GetAudioMetadata(fPath);
+                    App.Log("[FINE] Have audio metadata");
+                    try
+                    {
+                        double d = 0;
+                        try
+                        {
+                            d = double.Parse(this.Metadata.format.duration, CultureInfo.CurrentCulture);
+                        }
+                        catch (FormatException fe)
+                        {
+                            d = double.Parse(this.Metadata.format.duration, CultureInfo.InvariantCulture);
+                        }
+
+                        this.Length = (uint)Math.Ceiling(d * 1000);
+                    }
+                    catch (Exception e)
+                    {
+                        App.Log("[ERROR] Audio metadata malformed!", e);
+                    }
+
+                    this.IsStreaming = streaming;
+                    if (streaming)
+                    {
+                        this.StreamBackend = FFMpeg.StreamAudio(fPath, 48000);
+                    }
+                    else
+                    {
+                        this.AudioGetter = () => FFMpeg.GetAudio(fPath, 48000);
+                    }
+
+                    App.Log("[FINE] AudioInfo created!");
+                }
+                else
+                {
+                    App.Log("[FATAL] Asked to add a non-existing file!");
+                    throw new ArgumentException("A file at a given path does not exist!");
+                }
             }
         }
 
@@ -58,21 +136,48 @@
         {
             if (this.IsStreaming)
             {
-                if (!this.StreamBackend.CanRead())
+                if (this._isYoutubeStream)
                 {
-                    try
+                    // Check expiration
+                    long delta = this._expireDate - DateTimeOffset.Now.ToUnixTimeSeconds();
+                    bool expires = delta < 4; // expire in 4 seconds, recreate
+                    bool canRead = this.StreamBackend.CanRead();
+                    if (expires || !canRead)
                     {
-                        this.StreamBackend.Dispose(); // Dispose just in case?
+                        this.FilePath = Uri.UnescapeDataString(YoutubeDL.GetVideoStreamUrl(new Uri(this._originalURL))).Replace("\n", "");
+                        this._expireDate = YoutubeDL.GetExpirationDate(this.FilePath);
+                        this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000);
                     }
-                    finally
+                }
+                else
+                {
+                    if (!this.StreamBackend.CanRead())
                     {
-                        this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000); // Make self reuseable
+                        try
+                        {
+                            this.StreamBackend.Dispose(); // Dispose just in case?
+                        }
+                        finally
+                        {
+                            this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000); // Make self reuseable
+                        }
                     }
                 }
             }
             else
             {
                 this._audioBuffer = this.AudioGetter();
+            }
+        }
+
+        public void Seek(float percentage)
+        {
+            if (this.Length > 0)
+            {
+                int desired = (int)MathF.Round((this.Length / 1000) * percentage);
+                this.StreamBackend.Dispose();
+                this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000, desired);
+                this.ClearBuffer();
             }
         }
 
@@ -87,8 +192,8 @@
                 int w = 0;
                 while (true) // Hate doing it this way, esp. broken w/ broken input files but oh well
                 {            // TODO find a way to not have a while/true loop here, maybe embed ffmpeg and do stuff there?
-                    int i = this.StreamBackend.BaseOut.Read(this._internalBuffer, w, 192000 - w);
-                    if (i == 0 || w == 192000)
+                    int i = this.StreamBackend.BaseOut.Read(this._internalBuffer, w, MainWindow.MusicRate - w);
+                    if (i == 0 || w == MainWindow.MusicRate)
                     {
                         break;
                     }
