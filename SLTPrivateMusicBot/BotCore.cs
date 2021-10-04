@@ -18,17 +18,21 @@
         private DiscordSocketClient _client;
 
         private IAudioClient _currentAudioClient;
-
-
         private ulong _vcID;
         private ulong _gID;
 
-        public IUserMessage PlaylistMessage { get; set; }
+        public bool Connected { get; set; }
 
         private AudioInfo _currentAI;
 
+        private bool _waitingOneToStop;
         private readonly EventWaitHandle _waitOneToStop = new (false, EventResetMode.AutoReset);
         private readonly EventWaitHandle _waitOneToReconnect = new (false, EventResetMode.AutoReset);
+
+        public BotCore()
+        {
+            this._buffer = new byte[MainWindow.MusicRate];
+        }
 
         public void Awake()
         {
@@ -57,6 +61,8 @@
                     MainWindow mw = (MainWindow)Application.Current.MainWindow;
                     mw.ClientInVoiceCallback();
                 });
+
+                this.Connected = true;
             }
 
             await Task.CompletedTask;
@@ -74,6 +80,8 @@
                         mw.ClientDisconnectedCallback();
                     }
                 });
+
+                this.Connected = false;
             }
 
             await Task.CompletedTask;
@@ -87,6 +95,7 @@
                 mw.ClientConnectedCallback();
             });
 
+            this.Connected = false;
             await Task.CompletedTask;
         }
 
@@ -114,12 +123,14 @@
 
         public static async Task Log(LogMessage msg)
         {
+            App.Log(msg.Message);
             System.Diagnostics.Debug.WriteLine(msg);
             await Task.CompletedTask;
         }
 
         public static async Task Log(string msg)
         {
+            App.Log(msg);
             System.Diagnostics.Debug.WriteLine(msg);
             await Task.CompletedTask;
         }
@@ -132,6 +143,7 @@
                 await this._currentAudioClient.StopAsync();
                 this._currentAudioClient.Dispose();
                 this._currentAudioClient = null;
+                this.Connected = false;
             }
         }
 
@@ -200,10 +212,22 @@
 
         public static string Shorten(string text, int maxLen) => text.Length <= maxLen ? text : string.Concat(text.AsSpan(0, maxLen - 3), "...");
 
-        private readonly byte[] _buffer = new byte[48000 * 2 * 2]; // Raw data is s16le * 48000 sample rate * 2 channels
+        public void SeekPosition(int percentage)
+        {
+            if (this._currentAI != null && !this._currentAI.IsBeingCleanedUp)
+            {
+                this._newSeekPosition = percentage;
+            }
+        }
+
+        private int _newSeekPosition = -1;
+        private readonly byte[] _buffer; // Raw data is s16le * 48000 sample rate * 2 channels
+
+        public static StreamBackend ytTestStreamBackend;
+
         public void Play(AudioInfo info)
         {
-            if (this._currentAudioClient == null)
+            if (this._currentAudioClient == null || this._waitingOneToStop)
             {
                 return;
             }
@@ -213,17 +237,20 @@
             {
                 if (this._currentAI != null)
                 {
+                    this._waitingOneToStop = true;
                     this._waitOneToStop.WaitOne();
+                    this._waitingOneToStop = false;
                 }
 
-
+                bool graceful = true;
                 this._currentAI = info;
-                AudioDataReader? output = null;
+                this._newSeekPosition = -1;
+                AudioDataReader? input = null;
                 AudioOutStream? d = null;
                 try
                 {
                     info.CreateBuffer();
-                    output = new AudioDataReader(info);
+                    input = new AudioDataReader(info);
                     Application.Current.Dispatcher.Invoke(() => 
                     { 
                         info.IsPlaying = true;
@@ -236,14 +263,31 @@
                     {
                         this._client.SetGameAsync(Shorten(info.FullNameProperty, 25));
                         int l = 0;
-                        while ((l = output.Read(this._buffer)) > 0 && !info.IsBeingCleanedUp)
+                        while (graceful && !info.IsBeingCleanedUp)
                         {
-                            long c = output.Position;
-                            long t = output.Length;
+                            if (this._newSeekPosition >= 0)
+                            {
+                                d.Flush();
+                                input.Position = (long)(input.Length * (this._newSeekPosition / 100f));
+                                this._newSeekPosition = -1;
+                            }
+
+                            l = input.Read(this._buffer);
+                            if (l <= 0)
+                            {
+                                break;
+                            }
+
+                            long c = input.Position;
+                            long t = input.Length;
                             double p = (double)c / (double)t;
                             try
                             {
                                 d.Write(this._buffer, 0, l);
+                                while (AudioPlayer.Instance.Paused)
+                                {
+                                    Thread.Sleep(250);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -260,33 +304,43 @@
                                         this._waitOneToReconnect.WaitOne();
                                         if (this._currentAudioClient == null)
                                         {
-                                            // Welp, couldn't even reconnect to voice. Just throw.
-#pragma warning disable CA2219 // Not supposed to do this, but this is a fatal exception, can't continue execution anyway
-                                            throw ex;
-#pragma warning restore CA2219 // Do not raise exceptions in finally clauses
+                                            graceful = false;
+                                            // Welp, couldn't even reconnect to voice.
                                         }
                                     }
                                 }
-                                
+
                                 // Try to re-create the stream and keep on keeping on?
-                                d = this._currentAudioClient.CreatePCMStream(AudioApplication.Music);
-                                d.Write(this._buffer, 0, l); // Just send the data again.
-                                Application.Current.Dispatcher.Invoke(() =>
+                                try
                                 {
-                                    MainWindow mw = (MainWindow)Application.Current.MainWindow;
-                                    mw.ClientInVoiceCallback();
-                                });
+                                    d = this._currentAudioClient.CreatePCMStream(AudioApplication.Music);
+                                    d.Write(this._buffer, 0, l); // Just send the data again.
+                                    Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        MainWindow mw = (MainWindow)Application.Current.MainWindow;
+                                        mw.ClientInVoiceCallback();
+                                    });
+                                }
+                                catch (Exception exe)
+                                {
+                                    graceful = false;
+                                }
                             }
 
                             Task.Run(() =>
                                 Application.Current.Dispatcher.Invoke(() => {
-                                    MainWindow.Current.ProgressBar_Progress.Value = p * 100;
-                                    AudioInfo ai = Player.AudioPlayer.Instance.CurrentAudio;
-                                    if (ai != null)
+                                    if (MainWindow.Current != null)
                                     {
-                                        uint numSecs = (uint)(ai.Length * p);
-                                        MainWindow.Current.Label_Current.Content = $"{numSecs / 1000 / 60:00}:{numSecs / 1000 % 60:00}";
-                                        MainWindow.Current.Label_Duration.Content = ai.LengthProperty;
+                                        MainWindow.Current.IgnoreSliderValueChange = true;
+                                        MainWindow.Current.ProgressBar_Progress.Value = p * 100;
+                                        MainWindow.Current.IgnoreSliderValueChange = false;
+                                        AudioInfo ai = Player.AudioPlayer.Instance.CurrentAudio;
+                                        if (ai != null)
+                                        {
+                                            uint numSecs = (uint)(ai.Length * p);
+                                            MainWindow.Current.Label_Current.Content = $"{numSecs / 1000 / 60:00}:{numSecs / 1000 % 60:00}";
+                                            MainWindow.Current.Label_Duration.Content = ai.LengthProperty;
+                                        }
                                     }
                                 })
                             );
@@ -300,7 +354,15 @@
                         }
                         else
                         {
-                            this._stopCallback?.Invoke();
+                            try
+                            {
+                                d.Write(new byte[MainWindow.MusicRate / 4]);
+                                d.Flush();
+                            }
+                            finally
+                            {
+                                this._stopCallback?.Invoke();
+                            }
                         }
                         
                         info.Clear();
@@ -313,14 +375,14 @@
 
                         info.IsBeingCleanedUp = false;
                         d.Dispose();
-                        output.Dispose();
+                        input.Dispose();
                     }
                 }
                 finally
                 {
                     try
                     {
-                        output?.Dispose();
+                        input?.Dispose();
                     }
                     catch
                     {
@@ -348,8 +410,15 @@
 
                         this._currentAI = null;
                         this._client.SetGameAsync(string.Empty);
-                        AudioPlayer.Instance.PlayFinishedCallback();
-                        this._waitOneToStop.Set();
+                        if (graceful)
+                        {
+                            AudioPlayer.Instance.PlayFinishedCallback();
+                        }
+
+                        if (this._waitingOneToStop)
+                        {
+                            this._waitOneToStop.Set();
+                        }
                         // TODO signal player for next track
                     }
                 }

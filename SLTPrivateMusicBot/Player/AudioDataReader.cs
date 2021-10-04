@@ -19,7 +19,7 @@
             else
             {
                 this._underlyingMS = new MemoryStream(new byte[0]);
-                this._streamingApproxLength = (long)((this._ai.Length / 1000f) * 192000);
+                this._streamingApproxLength = (long)(this._ai.Length / 1000f * 192000);
             }
         }
 
@@ -31,7 +31,28 @@
 
         public override long Length => this._ai.IsStreaming ? this._streamingApproxLength : this._underlyingMS.Length;
 
-        public override long Position { get => this._ai.IsStreaming ? this._streamingPosition : this._underlyingMS.Position; set => this._underlyingMS.Position = value; }
+        public override long Position
+        {
+            get => this._ai.IsStreaming ? this._streamingPosition : this._underlyingMS.Position;
+            set
+            {
+                if (this._ai.IsStreaming)
+                {
+                    float f = (float)value / (float)this._streamingApproxLength;
+                    if (f > 1 - float.Epsilon)
+                    {
+                        f = 1;
+                    }
+
+                    this._ai.Seek(f);
+                    this._streamingPosition = value;
+                }
+                else
+                {
+                    this._underlyingMS.Position = value;
+                }
+            }
+        }
 
         public override void Flush() => this._underlyingMS.Flush();
 
@@ -47,7 +68,7 @@
             byte[] b = null;
             if (this._ai.IsStreaming)
             {
-                if (this._streamingApproxLength - this._streamingPosition <= 192000)
+                if (this._streamingApproxLength - this._streamingPosition <= MainWindow.MusicRate)
                 {
                     this._ai.ClearBuffer();
                 }
@@ -58,7 +79,7 @@
                     return 0;
                 }
 
-                this._streamingPosition = Math.Min(this._streamingApproxLength, this._streamingPosition + 192000);
+                this._streamingPosition = Math.Min(this._streamingApproxLength, this._streamingPosition + MainWindow.MusicRate);
             }
 
             byte[] tBuf = new byte[2];

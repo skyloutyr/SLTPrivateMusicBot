@@ -3,12 +3,81 @@
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Globalization;
     using System.IO;
 
     public static class YoutubeDL
     {
         public static string TempDirectory { get; set; }
         public static List<string> TempFiles { get; } = new List<string>();
+
+        public static long GetExpirationDate(string url)
+        {
+            if (url.IndexOf("?expire=") != -1)
+            {
+                int expireInd = url.IndexOf("?expire=") + 8;
+                int nextInd = url.IndexOf('&', expireInd);
+                string timestamp = url.Substring(expireInd, nextInd - expireInd);
+                if (long.TryParse(timestamp, out long l))
+                {
+                    return l;
+                }
+            }
+
+            return 0;
+        }
+
+        public static string GetVideoTitle(Uri uri)
+        {
+            if (uri.Scheme == Uri.UriSchemeHttps && uri.Host.Equals("www.youtube.com")) // Can download from yt
+            {
+                Process p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "./youtube-dl.exe",
+                    Arguments = $"--restrict-filenames --no-playlist --no-check-certificate -e -s --skip-download -- \"{ uri.AbsoluteUri }\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                });
+
+                if (p == null)
+                {
+                    throw new Exception("Process is null, youtube-dl likely not found!");
+                }
+
+                p.WaitForExit();
+                return p.StandardOutput.ReadToEnd();
+            }
+
+            return string.Empty;
+        }
+
+        public static string GetVideoStreamUrl(Uri uri)
+        {
+            if (uri.Scheme == Uri.UriSchemeHttps && uri.Host.Equals("www.youtube.com")) // Can download from yt
+            {
+                Process p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "./youtube-dl.exe",
+                    Arguments = $"--format \"251/webm\" --restrict-filenames --no-playlist --no-check-certificate -g -s --skip-download -- \"{ uri.AbsoluteUri }\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                });
+
+                if (p == null)
+                {
+                    throw new Exception("Process is null, youtube-dl likely not found!");
+                }
+
+                p.WaitForExit();
+                return p.StandardOutput.ReadToEnd();
+            }
+
+            return string.Empty;
+        }
 
         public static string DownloadVideo(Uri uri)
         {
@@ -21,7 +90,7 @@
                 {
                     Process p = Process.Start(new ProcessStartInfo
                     {
-                        FileName = "youtube-dl",
+                        FileName = "./youtube-dl.exe",
                         Arguments = $"--no-playlist -x --audio-format mp3 -o { newTempDirectory }\\%(title)s.%(ext)s -- \"{ uri.AbsoluteUri }\"",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
