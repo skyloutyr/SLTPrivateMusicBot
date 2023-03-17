@@ -34,6 +34,7 @@
                 throw new Exception("Process could not start!");
             }
 
+            new ProcStdStreamObserver(process, process.StandardError, s => App.Log(s));
             AudioMetadata af = default;
             try
             {
@@ -67,10 +68,17 @@
 
         public static StreamBackend StreamAudio(string fPath, int sampleRate, int audioOffsetSeconds = 0)
         {
+            // -lts_verify will crash ffmpeg if used for a local filepath for whatever reason
+            // One might think that it would simply ignore the argument that doesn't make sense in the current context
+            // Or maybe spew out a warning but continue regardless, ignoring it but giving a heads-up
+            // But apparently for ffmpeg an argument like that is a case for a fatal error...
+            string args = fPath.StartsWith("http:") || fPath.StartsWith("https:") ?
+                $"-hide_banner -loglevel quiet -tls_verify 0 -analyzeduration 922337203685477580 -probesize 922337203685477580 -thread_queue_size 4096 -re -i \"{fPath}\" -ac 2 -f s16le -blocksize {MainWindow.MusicRate} -ar {sampleRate}  -flush_packets 1 {(audioOffsetSeconds == 0 ? "" : ("-ss " + audioOffsetSeconds + " "))}pipe:1" :
+                $"-hide_banner -loglevel quiet -analyzeduration 922337203685477580 -probesize 922337203685477580 -thread_queue_size 4096 -re -i \"{fPath}\" -ac 2 -f s16le -blocksize {MainWindow.MusicRate} -ar {sampleRate}  -flush_packets 1 {(audioOffsetSeconds == 0 ? "" : ("-ss " + audioOffsetSeconds + " "))}pipe:1";
             Process process = Process.Start(new ProcessStartInfo
             {
                 FileName = "./ffmpeg.exe",
-                Arguments = $"-hide_banner -loglevel panic -i \"{fPath}\" -ac 2 -f s16le -ar {sampleRate} -blocksize {MainWindow.MusicRate} -flush_packets 1 {(audioOffsetSeconds == 0 ? "" : ("-ss " + audioOffsetSeconds + " "))}pipe:1",
+                Arguments = args,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -82,6 +90,7 @@
                 throw new Exception("Process could not start!");
             }
 
+            new ProcStdStreamObserver(process, process.StandardError, s => App.Log(s));
             return new StreamBackend(process);
         }
 
@@ -93,9 +102,10 @@
                 process = Process.Start(new ProcessStartInfo
                 {
                     FileName = "./ffmpeg.exe",
-                    Arguments = $"-hide_banner -loglevel panic -i \"{fPath}\" -ac 2 -f s16le -ar {sampleRate} pipe:1",
+                    Arguments = $"-hide_banner -loglevel quiet -i \"{fPath}\" -ac 2 -f s16le -ar {sampleRate} pipe:1",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     CreateNoWindow = true,
                 });
             }
@@ -111,6 +121,7 @@
                 throw new Exception("Process could not start!");
             }
 
+            new ProcStdStreamObserver(process, process.StandardError, s => App.Log(s));
             byte[] data = null;
             try
             {
@@ -155,6 +166,7 @@
 
         public void Dispose()
         {
+            App.Log("[WARNING] Stream backend explicitly disposed.");
             this._proc.Dispose();
         }
     }

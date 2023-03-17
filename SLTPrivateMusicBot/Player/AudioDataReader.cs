@@ -100,7 +100,7 @@
                     }
                 }
 
-                short f = BitConverter.ToInt16(tBuf);
+                short f = BitConverter.ToInt16(tBuf); // Signed 16bit PCM
                 f = (short)(f * AudioPlayer.Instance.Volume);
                 tBuf = BitConverter.GetBytes(f);
                 buffer[c++] = tBuf[0]; 

@@ -33,8 +33,8 @@
         }
 
         public bool WaitingForNext { get; set; }
-        public bool StreamingEnabled { get; set; }
-        public bool YTDirectEnabled { get; set; }
+        public bool StreamingEnabled { get; set; } = true;
+        public bool YTDirectEnabled { get; set; } = true;
         public LoopMode LoopMode { get; set; }
         public float Volume { get; set; } = 1;
         public bool Paused { get; internal set; }

@@ -2,6 +2,7 @@
 {
     using SLTPrivateMusicBot.Player;
     using System;
+    using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Windows;
@@ -21,33 +22,43 @@
 
         public static void Log(string text, Exception e = null)
         {
-            Current.Dispatcher.Invoke(() => {
-                try
+            if (Current != null)
+            {
+                Debugger.Log(0, null, text + "\n");
+                Current.Dispatcher.Invoke(() =>
                 {
-                    Instance._logger.WriteLine(text);
-                    TryUILog(text);
-                    if (e != null)
+                    try
                     {
-                        Instance._logger.WriteLine(e.GetType());
-                        TryUILog(e.GetType().ToString());
-                        foreach (string s in e.StackTrace.Split('\n'))
+                        Instance._logger.WriteLine(text);
+                        TryUILog(text);
+                        if (e != null)
                         {
-                            Instance._logger.WriteLine(s);
-                            TryUILog(s);
+                            Instance._logger.WriteLine(e.GetType());
+                            TryUILog(e.GetType().ToString());
+                            foreach (string s in e.StackTrace.Split('\n'))
+                            {
+                                Instance._logger.WriteLine(s);
+                                TryUILog(s);
+                            }
                         }
                     }
-                }
-                catch
-                {
-                    // NOOP
-                }
-            });
+                    catch
+                    {
+                        // NOOP
+                    }
+                });
+            }
         }
 
         private static bool TryUILog(string text)
         {
             try
             {
+                if (string.IsNullOrEmpty(text))
+                {
+                    return false;
+                }
+
                 if (SLTPrivateMusicBot.MainWindow.Current == null || SLTPrivateMusicBot.MainWindow.Current.TB_Log == null)
                 {
                     return false;
@@ -113,18 +124,25 @@
 
         private void Application_Startup(object sender, StartupEventArgs e)
         {
-            string[] args = Environment.GetCommandLineArgs();
-            bool nologging = args.Any(s => s.Equals("-q") || s.Equals("--quiet"));
-            bool production = !System.Diagnostics.Debugger.IsAttached || args.Any(s => s.Equals("-p") || s.Equals("--production"));
-            for (int i = 0; i < args.Length; ++i)
+            try
             {
-                if ((args[i].Equals("-ar") || args[i].Equals("--audio-rate")) && i < args.Length - 1 && int.TryParse(args[i + 1], out int index))
+                string[] args = Environment.GetCommandLineArgs();
+                bool nologging = args.Any(s => s.Equals("-q") || s.Equals("--quiet"));
+                bool production = !System.Diagnostics.Debugger.IsAttached || args.Any(s => s.Equals("-p") || s.Equals("--production"));
+                for (int i = 0; i < args.Length; ++i)
                 {
-                    SLTPrivateMusicBot.MainWindow.MusicRate = index;
-                }    
-            }
+                    if ((args[i].Equals("-ar") || args[i].Equals("--audio-rate")) && i < args.Length - 1 && int.TryParse(args[i + 1], out int index))
+                    {
+                        SLTPrivateMusicBot.MainWindow.MusicRate = index;
+                    }
+                }
 
-            this._logger = File.CreateText(Path.GetFullPath("./log.txt"));
+                this._logger = File.CreateText(Path.GetFullPath("./log.txt"));
+            }
+            catch
+            {
+                // NOOP
+            }
         }
     }
 }

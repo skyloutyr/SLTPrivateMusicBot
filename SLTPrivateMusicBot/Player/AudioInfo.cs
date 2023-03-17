@@ -1,8 +1,10 @@
 ﻿namespace SLTPrivateMusicBot.Player
 {
     using System;
+    using System.Diagnostics;
     using System.Globalization;
     using System.IO;
+    using System.Threading;
 
     public class AudioInfo
     {
@@ -140,12 +142,22 @@
                 {
                     // Check expiration
                     long delta = this._expireDate - DateTimeOffset.Now.ToUnixTimeSeconds();
-                    bool expires = delta < 4; // expire in 4 seconds, recreate
+                    bool expires = delta <= 4; // expire in 4 seconds, recreate
                     bool canRead = this.StreamBackend.CanRead();
                     if (expires || !canRead)
                     {
+                        App.Log("[INFO] YT stream expired, recreating");
                         this.FilePath = Uri.UnescapeDataString(YoutubeDL.GetVideoStreamUrl(new Uri(this._originalURL))).Replace("\n", "");
                         this._expireDate = YoutubeDL.GetExpirationDate(this.FilePath);
+                        try
+                        {
+                            this.StreamBackend.Dispose();
+                        }
+                        catch
+                        {
+                            // NOOP
+                        }
+
                         this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000);
                     }
                 }
@@ -175,6 +187,7 @@
             if (this.Length > 0)
             {
                 int desired = (int)MathF.Round((this.Length / 1000) * percentage);
+                App.Log("Seeking to " + desired);
                 this.StreamBackend.Dispose();
                 this.StreamBackend = FFMpeg.StreamAudio(this.FilePath, 48000, desired);
                 this.ClearBuffer();
@@ -190,9 +203,26 @@
             if (this.IsStreaming)
             {
                 int w = 0;
+                int nTriesAt0 = 0;
                 while (true) // Hate doing it this way, esp. broken w/ broken input files but oh well
                 {            // TODO find a way to not have a while/true loop here, maybe embed ffmpeg and do stuff there?
-                    int i = this.StreamBackend.BaseOut.Read(this._internalBuffer, w, MainWindow.MusicRate - w);
+                    int i = 0;
+                    try
+                    {
+                        i = this.StreamBackend.BaseOut.Read(this._internalBuffer, w, MainWindow.MusicRate - w);
+                        if (i == 0 && w == 0 && this.StreamBackend.CanRead() && nTriesAt0 < 64)
+                        {
+                            Debugger.Log(0, "", "Trying to read again, got 0 but not EOS (try " + nTriesAt0 + ")\n");
+                            ++nTriesAt0;
+                            continue;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        // FFMpeg died for no reason...
+                        App.Log("[ERROR] FFMpeg died", e);
+                    }
+
                     if (i == 0 || w == MainWindow.MusicRate)
                     {
                         break;
@@ -216,6 +246,7 @@
 
         public void Clear()
         {
+            App.Log("Clearing audio info for " + this.NameProperty);
             this._audioBuffer = null;
             if (this.IsStreaming)
             {

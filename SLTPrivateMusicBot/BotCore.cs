@@ -161,9 +161,9 @@
                 this._gID = channel.GuildId;
                 await Log("Audio client connected");
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                System.Diagnostics.Debugger.Break();
+                App.Log("[ERROR] Could not connect to voice!", e);
             }
         }
 
@@ -201,8 +201,8 @@
         {
             if (this._currentAI != null)
             {
-                this._currentAI.IsBeingCleanedUp = true;
                 this._stopCallback = callback;
+                this._currentAI.IsBeingCleanedUp = true;
             }
             else
             {
@@ -291,6 +291,7 @@
                             }
                             catch (Exception ex)
                             {
+                                App.Log("[ERROR] Issue while writing data to discord!", ex);
                                 // stream must be closed.
                                 if (this._currentAudioClient == null || this._currentAudioClient.ConnectionState != ConnectionState.Connected)
                                 {
@@ -324,6 +325,7 @@
                                 catch (Exception exe)
                                 {
                                     graceful = false;
+                                    App.Log("[FATAL] Could not recover from discord issues", exe);
                                 }
                             }
 
@@ -346,6 +348,10 @@
                             );
                         }
                     }
+                    catch (Exception e)
+                    {
+                        App.Log("[FATAL] Had a fatal issue streaming to Discord", e);
+                    }
                     finally
                     {
                         if (!info.IsBeingCleanedUp)
@@ -359,12 +365,14 @@
                                 d.Write(new byte[MainWindow.MusicRate / 4]);
                                 d.Flush();
                             }
-                            finally
+                            catch
                             {
-                                this._stopCallback?.Invoke();
+                                // NOOP
                             }
                         }
-                        
+
+                        this._stopCallback?.Invoke();
+                        this._stopCallback = null;
                         info.Clear();
                         Application.Current.Dispatcher.Invoke(() => 
                         { 
@@ -428,6 +436,17 @@
 
         public async void Disconnect()
         {
+            try
+            { 
+                await this._client.GetGuild(this._gID).GetVoiceChannel(this._vcID).DisconnectAsync();
+                this._currentAudioClient?.Dispose();
+            }
+            catch
+            {
+                // NOOP, just trying to exit gracefuly
+            }
+
+            await this._client.SetStatusAsync(UserStatus.Offline); // Sometimes may force an immediate dc
             await this._client.LogoutAsync();
             await this._client.StopAsync();
             this._client.Dispose();

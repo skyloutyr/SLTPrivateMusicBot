@@ -30,10 +30,13 @@
             <Button x:Name="Btn_AddUrl" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="2 2 2 2" Click="Btn_AddUrl_Click">
                 <Path Fill="Gray" Data="M18 14 L18 2 L14 2 L14 14 L2 14 L2 18 L14 18 L14 30 L18 30 L18 18 L30 18 L30 14 Z M34 30 L34 22 L32 20 L22 20 L20 22 L20 30 L22 32 L32 32 L26 28 L26 24 L30 26 L26 28 L32 32 Z" Height="14" Stretch="Fill" Width="14" />
             </Button>
-            <CheckBox x:Name="CB_IgnoreConnections" Content="Ignore connection" />
+            <Button x:Name="Btn_DlYoutube" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="2 2 2 2" Click="Btn_Download_Click">
+                <Path Fill="Gray" Data="M 8 18 L 8 2 L 6 2 L 6 18 L 2 18 L 2 18 L 2 18 L 7 30 L 7 30 L 12 18 L 12 18 L 12 18 Z M 34 30 L 34 22 L 32 20 L 22 20 L 20 22 L 20 30 L 22 32 L 32 32 L 26 28 L 26 24 L 30 26 L 26 28 L 32 32 Z" Height="14" Stretch="Fill" Width="14" />
+            </Button>
+            <CheckBox x:Name="CB_IgnoreConnections" IsChecked="True" Content="Ignore connection" Width="60" />
         </StackPanel>
-        <mah:ToggleSwitch x:Name="TS_Streaming" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Audio Streaming" Toggled="ToggleSwitch_Toggled" Margin="0,37,0,0" />
-        <mah:ToggleSwitch x:Name="TS_YTDirect" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Direct Youtube Streaming" Toggled="ToggleSwitch_Toggled" Margin="0,97,0,0" />
+        <mah:ToggleSwitch x:Name="TS_Streaming" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Audio Streaming" Toggled="ToggleSwitch_Toggled" IsOn="True" Margin="0,37,0,0" />
+        <mah:ToggleSwitch x:Name="TS_YTDirect" HorizontalAlignment="Stretch" VerticalAlignment="Top" Header="Enable Direct Youtube Streaming" Toggled="ToggleSwitch_Toggled" IsOn="True" Margin="0,97,0,0" />
         <ScrollViewer Margin="0,157,0,63">
             <RichTextBox x:Name="TB_Log" IsReadOnly="True" Block.LineHeight="1" />
         </ScrollViewer>

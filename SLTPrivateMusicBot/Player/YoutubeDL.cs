@@ -33,7 +33,7 @@
             {
                 Process p = Process.Start(new ProcessStartInfo
                 {
-                    FileName = "./youtube-dl.exe",
+                    FileName = "./yt-dlp.exe",
                     Arguments = $"--restrict-filenames --no-playlist --no-check-certificate -e -s --skip-download -- \"{ uri.AbsoluteUri }\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -59,8 +59,8 @@
             {
                 Process p = Process.Start(new ProcessStartInfo
                 {
-                    FileName = "./youtube-dl.exe",
-                    Arguments = $"--format \"251/webm\" --restrict-filenames --no-playlist --no-check-certificate -g -s --skip-download -- \"{ uri.AbsoluteUri }\"",
+                    FileName = "./yt-dlp.exe",
+                    Arguments = $"-vn --format \"bestaudio\" --restrict-filenames --no-playlist --no-check-certificate -g -s --skip-download -- \"{ uri.AbsoluteUri }\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -79,6 +79,39 @@
             return string.Empty;
         }
 
+        public static bool DownloadVideoTo(Uri uri, string loc)
+        {
+            try
+            {
+                if (uri.Scheme == Uri.UriSchemeHttps && uri.Host.Equals("www.youtube.com")) // Can download from yt
+                {
+                    Process p = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "./yt-dlp.exe",
+                        Arguments = $"--no-playlist -x --audio-format mp3 -o \"{loc}\" -- \"{uri.AbsoluteUri}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                    });
+
+                    if (p == null)
+                    {
+                        throw new Exception("Process is null, youtube-dl likely not found!");
+                    }
+
+                    p.WaitForExit();
+                    return true;
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static string DownloadVideo(Uri uri)
         {
             CheckTempDir();
@@ -90,7 +123,7 @@
                 {
                     Process p = Process.Start(new ProcessStartInfo
                     {
-                        FileName = "./youtube-dl.exe",
+                        FileName = "./yt-dlp.exe",
                         Arguments = $"--no-playlist -x --audio-format mp3 -o { newTempDirectory }\\%(title)s.%(ext)s -- \"{ uri.AbsoluteUri }\"",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,

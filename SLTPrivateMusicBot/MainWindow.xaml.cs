@@ -6,14 +6,11 @@
     using System;
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
-    using System.Globalization;
     using System.IO;
     using System.Linq;
-    using System.Runtime.InteropServices;
     using System.Threading;
     using System.Windows;
     using System.Windows.Controls;
-    using System.Windows.Data;
     using System.Windows.Input;
     using System.Windows.Media;
 
@@ -31,11 +28,15 @@
 
         public bool IgnoreSliderValueChange { get; set; }
 
+        private bool _isInitializing;
+
         public MainWindow()
         {
             App.Log("[INFO] Application starting");
+            this._isInitializing = true;
             InitializeComponent();
             this.Closed += this.HandleClose;
+            this._isInitializing = false;
             App.Log("[INFO] Application started");
         }
 
@@ -128,6 +129,65 @@
                 Bot.Awake();
                 this.Btn_Connect.IsEnabled = false;
             }
+        }
+
+        private void Btn_Download_Click(object sender, RoutedEventArgs e)
+        {
+            InputTextDialog itd = new InputTextDialog();
+            if (itd.ShowDialog() ?? false)
+            {
+                string txt = itd.URL;
+                Uri dataURI = new Uri(txt);
+                string s = YoutubeDL.GetVideoTitle(dataURI);
+                if (!string.IsNullOrEmpty(s))
+                {
+                    SaveFileDialog sfd = new SaveFileDialog() { Filter = "MP3 Audio|*.mp3", FileName = MakeValidFilename(s + ".mp3") };
+                    if (sfd.ShowDialog() ?? false)
+                    {
+                        this.ListView_Playlist.Visibility = Visibility.Hidden;
+                        this.ProgressRing_Wait.Visibility = Visibility.Visible;
+                        new Thread(() =>
+                        {
+                            bool err = false;
+                            try
+                            {
+                                bool res = YoutubeDL.DownloadVideoTo(dataURI, sfd.FileName);
+                                if (res)
+                                {
+                                    AudioPlayer.Instance.Add(new AudioInfo(sfd.FileName, AudioPlayer.Instance.StreamingEnabled, AudioPlayer.Instance.YTDirectEnabled));
+                                }
+                            }
+                            catch
+                            {
+                                err = true;
+                            }
+
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                Current.ListView_Playlist.Visibility = Visibility.Visible;
+                                Current.ProgressRing_Wait.Visibility = Visibility.Hidden;
+                                if (err)
+                                {
+                                    MessageBox.Show("Either the provided link wasn't a youtube video url or there was a filesystem error", "Couldn't download video!", MessageBoxButton.OK, MessageBoxImage.Error);
+                                }
+                            });
+                        }).Start();
+                    }
+                    
+                }
+            }
+        }
+
+        static string MakeValidFilename(string text)
+        {
+            text = text.Replace('\'', '’'); // U+2019 right single quotation mark
+            text = text.Replace('"', '”'); // U+201D right double quotation mark
+            text = text.Replace('/', '⁄');  // U+2044 fraction slash
+            foreach (char c in Path.GetInvalidFileNameChars())
+            {
+                text = text.Replace(c, '_');
+            }
+            return text;
         }
 
         private void ListView_Playlist_DragEnter(object sender, DragEventArgs e)
@@ -490,23 +550,26 @@
         // Streaming enabled/disabled
         private void ToggleSwitch_Toggled(object sender, RoutedEventArgs e)
         {
-            if (sender == this.TS_YTDirect)
+            if (!this._isInitializing)
             {
-                if (!this.TS_Streaming.IsOn && this.TS_YTDirect.IsOn)
+                if (sender == this.TS_YTDirect)
                 {
-                    this.TS_Streaming.IsOn = true;
-                }
+                    if (!this.TS_Streaming.IsOn && this.TS_YTDirect.IsOn)
+                    {
+                        this.TS_Streaming.IsOn = true;
+                    }
 
-                AudioPlayer.Instance.YTDirectEnabled = this.TS_Streaming.IsOn;
-            }
-            else
-            {
-                if (this.TS_YTDirect.IsOn && !this.TS_Streaming.IsOn)
+                    AudioPlayer.Instance.YTDirectEnabled = this.TS_Streaming.IsOn;
+                }
+                else
                 {
-                    this.TS_YTDirect.IsOn = false;
-                }
+                    if (this.TS_YTDirect.IsOn && !this.TS_Streaming.IsOn)
+                    {
+                        this.TS_YTDirect.IsOn = false;
+                    }
 
-                AudioPlayer.Instance.StreamingEnabled = this.TS_Streaming.IsOn;
+                    AudioPlayer.Instance.StreamingEnabled = this.TS_Streaming.IsOn;
+                }
             }
         }
 
